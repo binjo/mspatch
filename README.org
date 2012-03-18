@@ -1,0 +1,10 @@
+
+* mapatch.py
+
+This tiny tool is a wrapper of [[https://code.google.com/p/ms-patch-tools/][iDefense's ms-patch-tools]], which "consists of several tools for extracting useful information from Microsoft bulletins". Basically it adds support of downloading the patch, feature like Darungrim's Bin Collecter.
+
+* TODO
+
+** auto extract
+
+** auto diff?
