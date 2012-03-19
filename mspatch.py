@@ -97,11 +97,11 @@ def main():
     opt = optparse.OptionParser( usage="usage: %prog [options]", version="%prot " + __version__ )
     opt.add_option( "-y", "--year", help="year of bulletin" )
     opt.add_option( "-n", "--num", help="number string of bulletin" )
-    opt.add_option( "-f", "--familyid", help="familyid of certain target" )
     opt.add_option( "-a", "--all", help="set flag to downthemall", action="store_true", default=False )
     opt.add_option( "-d", "--download", help="flag as download action", action="store_true", default=False )
     opt.add_option( "-o", "--output", help="output directory", default="patches" )
     opt.add_option( "-l", "--list", help="list familyids", action="store_true", default=False )
+    opt.add_option( "-m", "--match", help="string to match target" )
 
     (opts, args) = opt.parse_args()
 
@@ -118,8 +118,11 @@ def main():
 
         mspatch.query_bulletin( int(opts.year), int(opts.num) )
 
-        if opts.familyid:
-            mspatch.get_patch( opts.familyid, opts.output )
+        if opts.match:
+            for familyid in mspatch.familyids:
+                if opts.match.lower() in familyid[0].lower():
+                    print '---[Target (%s)' % (familyid[0])
+                    mspatch.get_patch( familyid[1], opts.output )
         elif opts.all:
             for familyid in mspatch.familyids:
                 print '---[Target (%s)' % (familyid[0])
