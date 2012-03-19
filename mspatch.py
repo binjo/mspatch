@@ -63,18 +63,33 @@ class MsPatchWrapper(msPatchFileInfo):
 
         for x in downloads:
             link = x.url
-            fn = os.path.join( direktory, link[link.rfind('/')+1:] )
-            print '---[Downloading %s -> (%s)' % (link, fn)
+            print '---[Downloading %s' % (link)
             try:
-                data = self.BR.open( link ).get_data()
+                rc = self.BR.open( link )
+                data = rc.get_data()
+                size = rc.info().getheader( 'content-length' )
+                # awkward fix of duplicate patch file name
+                fn = tmpname = link[link.rfind('/')+1:]
+                i = 1
+                while True:
+                    fn = os.path.join( direktory, tmpname )
+                    if not os.path.isfile( fn ):
+                        break
+                    else:
+                        # same file name exists
+                        if size == os.stat( fn )[6]:
+                            raise Exception, "differ url, same file tho?"
+                        else:
+                            tmpname = (tmpname[::-1] + '-' + str(i))[::-1]
+                    i += 1
             except Exception, e:
-                print '---[Failed...(%s)' % (str(e))
+                print '---[...(%s)' % (str(e))
                 continue
 
             if data and len(data) > 0:
                 with open( fn, 'wb' ) as fh:
                     fh.write( data )
-                print '---[done...'
+                print '---[%s saved...' % (fn)
 
 def main():
     """TODO
