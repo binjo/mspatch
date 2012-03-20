@@ -50,7 +50,16 @@ class MsPatchWrapper(msPatchFileInfo):
             txt = x.text
             url = x.url
             fid = url[url.find('=')+1:]
+            if fid.find( '&' ) != -1:
+                fid = fid[:fid.find('&')]
             yield txt, fid
+
+    @property
+    def prevbulletins(self):
+        """a generator of 'Bulletins Replaced by this Update'
+        """
+        for x in self.BR.links( url_regex='go\.microsoft', text_regex='MS\d+\-' ):
+            yield x.text
 
     def get_patch(self, family, direktory):
         """
