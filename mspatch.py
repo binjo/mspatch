@@ -98,7 +98,6 @@ class MsPatchWrapper(msPatchFileInfo):
             print '---[Downloading %s' % (link)
             try:
                 rc = self.BR.open( link )
-                data = rc.get_data()
                 size = rc.info().getheader( 'content-length' )
                 # awkward fix of duplicate patch file name
                 fn = tmpname = link[link.rfind('/')+1:]
@@ -109,11 +108,12 @@ class MsPatchWrapper(msPatchFileInfo):
                         break
                     else:
                         # same file name exists
-                        if size == os.stat( fn )[6]:
-                            raise Exception, "differ url, same file tho?"
+                        if int(size) == os.stat( fn )[6]:
+                            raise Exception( "differ url, same file tho?" )
                         else:
                             tmpname = (tmpname[::-1] + '-' + str(i))[::-1]
                     i += 1
+                data = rc.get_data()
             except Exception, e:
                 print '---[...(%s)' % (str(e))
                 continue
