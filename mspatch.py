@@ -65,6 +65,10 @@ class MsPatchWrapper(msPatchFileInfo):
 
         self.soup = self.makeSoup(url)
 
+        prevbulletins = ', '.join( self.prevbulletins )
+        if prevbulletins:
+            print '--[Replaced Bulletins (%s)' % (prevbulletins)
+
     @property
     def familyids(self):
         """
