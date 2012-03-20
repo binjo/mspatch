@@ -28,6 +28,29 @@ class MsPatchWrapper(msPatchFileInfo):
 
         self.soup = None
 
+    def getBulletinFileInfo(self, year, num):
+
+        print "-[Retrieving file information for bulletin MS%.2d-%.3d" % (year, num)
+
+        # if year > 11:           # FIXME
+        #     url = 'http://technet.microsoft.com/security/bulletin/MS%.2d-%.3d' % (year, num)
+        # else:
+        #     url = 'http://www.microsoft.com/technet/security/Bulletin/MS%.2d-%.3d.mspx' % (year, num)
+        url = 'http://technet.microsoft.com/en-us/security/bulletin/ms%.2d-%.3d' % (year, num)
+
+        print "--[Retrieving %s" % (url)
+
+        soup = self.makeSoup(url)
+
+        prevbulletins = ', '.join( self.prevbulletins )
+        if prevbulletins:
+            print '--[Replaced Bulletins (%s)' % (prevbulletins)
+
+        if year > 8 or (year == 8 and num >= 18):
+            return self.getNewFileInfo(soup, year, num)
+        else:
+            return self.getOldFileInfo(soup, year, num)
+
     def query_bulletin(self, year, num):
 
         print "-[Retrieving file information for bulletin MS%.2d-%.3d" % (year, num)
