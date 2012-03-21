@@ -79,6 +79,9 @@ class MsPatchWrapper(msPatchFileInfo):
             fid = url[url.find('=')+1:]
             if fid.find( '&' ) != -1:
                 fid = fid[:fid.find('&')]
+            # skip Windows Installer's familyid
+            if fid in ['5A58B56F-60B6-4412-95B9-54D056D6F9F4', '889482FC-5F56-4A38-B838-DE776FD4138C', ]:
+                continue
             yield txt, fid
 
     @property
