@@ -121,13 +121,18 @@ class MsPatchWrapper(msPatchFileInfo):
     def prevbulletins(self):
         """a generator of 'Bulletins Replaced by this Update'
         """
-        for x in self.BR.links( url_regex='go\.microsoft', text_regex='MS\d+\-' ):
-            yield x.text
+        tmp = [ x.text for x in self.BR.links( url_regex='go\.microsoft', text_regex='MS\d+\-' ) ]
+        tmp = list(set(tmp))    # remove duplicaitons
+        for x in tmp:
+            yield x
 
     def get_patch(self, family, direktory, extract_p=False):
         """
         """
         link = 'http://www.microsoft.com/downloads/en/confirmation.aspx?familyid=' + family + '&displayLang=en'
+
+        if not os.path.isdir( direktory ):
+            os.makedirs( direktory )
 
         self.makeSoup( link )
 
@@ -177,12 +182,12 @@ def main():
     opt = optparse.OptionParser( usage="usage: %prog [options]", version="%prot " + __version__ )
     opt.add_option( "-y", "--year", help="year of bulletin" )
     opt.add_option( "-n", "--num", help="number string of bulletin" )
-    opt.add_option( "-a", "--all", help="set flag to downthemall", action="store_true", default=False )
     opt.add_option( "-d", "--download", help="flag as download action", action="store_true", default=False )
     opt.add_option( "-o", "--output", help="output directory", default="patches" )
     opt.add_option( "-l", "--list", help="list familyids", action="store_true", default=False )
     opt.add_option( "-m", "--match", help="string to match target" )
     opt.add_option( "-e", "--extract", help="flag as extract action", action="store_true", default=False )
+    opt.add_option( "-f", "--follow", help="follow replaced bulletins", action="store_true", default=False )
 
     (opts, args) = opt.parse_args()
 
@@ -192,22 +197,38 @@ def main():
 
     mspatch = MsPatchWrapper()
 
-    if not os.path.isdir( opts.output ):
-        os.mkdir( opts.output )
-
     if opts.download:
 
         mspatch.query_bulletin( int(opts.year), int(opts.num) )
 
-        if opts.match:
-            for familyid in mspatch.familyids:
-                if opts.match.lower() in familyid[0].lower():
+        prevbulletins = [ x for x in mspatch.prevbulletins ]
+
+        for familyid in mspatch.familyids:
+            if ( opts.match and opts.match.lower() not in familyid[0].lower() ):
+                continue
+
+            print '---[Target (%s)' % (familyid[0])
+            mspatch.get_patch( familyid[1], opts.output, opts.extract )
+
+        if opts.follow:
+
+            # FIXME follow once?
+            for prevbulletin in prevbulletins:
+                m = re.match( 'MS((?P<year>\d+))-((?P<num>\S+))', prevbulletin )
+                if not m:
+                    print '----[wtf?? (%s)' % (prevbulletin)
+                    continue
+
+                print '----[Following bulletin (%s)' % (prevbulletin)
+
+                mspatch.query_bulletin( int(m.group('year')), int(m.group('num')) )
+
+                for familyid in mspatch.familyids:
+                    if ( opts.match and opts.match.lower() not in familyid[0].lower() ):
+                        continue
+
                     print '---[Target (%s)' % (familyid[0])
-                    mspatch.get_patch( familyid[1], opts.output, opts.extract )
-        elif opts.all:
-            for familyid in mspatch.familyids:
-                print '---[Target (%s)' % (familyid[0])
-                mspatch.get_patch( familyid[1], opts.output, opts.extract )
+                    mspatch.get_patch( familyid[1], os.path.join(opts.output, prevbulletin), opts.extract )
 
     elif opts.list:
 
