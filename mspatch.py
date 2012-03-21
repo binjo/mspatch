@@ -13,6 +13,39 @@ __date__    = '2012-03-18 14:19:24'
 import os, sys
 import optparse
 from msPatchInfo import *
+import popen2
+
+class PatchExtracter():
+    """klass of PatchExtracter
+    """
+
+    def __init__(self, fpatch=None, tmpdir='extracted'):
+        """
+        """
+        self._patchee = fpatch
+        self._tmpdir  = tmpdir
+        if not os.path.isdir( tmpdir ):
+            os.makedirs( tmpdir )
+
+    @property
+    def tmpdir(self):
+        """
+        """
+        return self._tmpdir
+
+    def extract(self, fpatch=None):
+        """
+        """
+        patchee = fpatch if fpatch else self._patchee
+        if not patchee:
+            raise Exception( 'Patch file missed?' )
+
+        # TODO handle msu/msp/msi
+        if patchee[-4:] == '.exe':
+            popen2.popen2( patchee + " /x:" + self._tmpdir + " /quiet" )
+            return True
+
+        return False
 
 class MsPatchWrapper(msPatchFileInfo):
     """wrapper klass of mspatchfileinfo
@@ -91,7 +124,7 @@ class MsPatchWrapper(msPatchFileInfo):
         for x in self.BR.links( url_regex='go\.microsoft', text_regex='MS\d+\-' ):
             yield x.text
 
-    def get_patch(self, family, direktory):
+    def get_patch(self, family, direktory, extract_p=False):
         """
         """
         link = 'http://www.microsoft.com/downloads/en/confirmation.aspx?familyid=' + family + '&displayLang=en'
@@ -130,6 +163,14 @@ class MsPatchWrapper(msPatchFileInfo):
                     fh.write( data )
                 print '---[%s saved...' % (fn)
 
+                if extract_p:
+                    ex = PatchExtracter( tmpdir=os.path.join(direktory, "extracted", tmpname[:-4]) )
+                    try:
+                        if ex.extract( fn ):
+                            print '---[Extracted in (%s)' % (ex.tmpdir)
+                    except Exception, e:
+                        print str(e)
+
 def main():
     """TODO
     """
@@ -141,6 +182,7 @@ def main():
     opt.add_option( "-o", "--output", help="output directory", default="patches" )
     opt.add_option( "-l", "--list", help="list familyids", action="store_true", default=False )
     opt.add_option( "-m", "--match", help="string to match target" )
+    opt.add_option( "-e", "--extract", help="flag as extract action", action="store_true", default=False )
 
     (opts, args) = opt.parse_args()
 
@@ -161,11 +203,11 @@ def main():
             for familyid in mspatch.familyids:
                 if opts.match.lower() in familyid[0].lower():
                     print '---[Target (%s)' % (familyid[0])
-                    mspatch.get_patch( familyid[1], opts.output )
+                    mspatch.get_patch( familyid[1], opts.output, opts.extract )
         elif opts.all:
             for familyid in mspatch.familyids:
                 print '---[Target (%s)' % (familyid[0])
-                mspatch.get_patch( familyid[1], opts.output )
+                mspatch.get_patch( familyid[1], opts.output, opts.extract )
 
     elif opts.list:
 
