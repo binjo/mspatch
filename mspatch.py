@@ -10,10 +10,9 @@ __author__  = 'Binjo'
 __version__ = '0.1'
 __date__    = '2012-03-18 14:19:24'
 
-import os, sys
-import optparse
+import os, sys, optparse, popen2, re, shutil
 from msPatchInfo import *
-import popen2
+import pefile
 
 class PatchExtracter():
     """klass of PatchExtracter
@@ -27,25 +26,113 @@ class PatchExtracter():
         if not os.path.isdir( tmpdir ):
             os.makedirs( tmpdir )
 
+        self._whitelist = [ 'ohotfixr.dll', 'ohotfix.exe', 'ohotfix.ini' ] # TODO more...
+
     @property
     def tmpdir(self):
         """
         """
         return self._tmpdir
 
-    def extract(self, fpatch=None):
+    def getver(self, fname):
+        """get file's version
+        rip from https://code.google.com/p/ms-patch-tools/source/browse/trunk/msux/dllVers.py
+        """
+        try:
+            pe = pefile.PE( data=open(fname, 'rb').read() )
+        except pefile.PEFormatError:
+            print '[-] failed to rename, not PE file?'
+            return ''
+
+        osMajor = pe.VS_FIXEDFILEINFO.FileVersionMS >> 16
+        osMinor = pe.VS_FIXEDFILEINFO.FileVersionMS & 0xffff
+        swMajor = pe.VS_FIXEDFILEINFO.FileVersionLS >> 16
+        swMinor = pe.VS_FIXEDFILEINFO.FileVersionLS & 0xffff
+
+        return '.%d.%d.%d.%d' % (osMajor, osMinor, swMajor, swMinor)
+
+    def _extract(self, fpatch=None):
         """
         """
         patchee = fpatch if fpatch else self._patchee
         if not patchee:
             raise Exception( 'Patch file missed?' )
 
-        # TODO handle msu/msp/msi
-        if patchee[-4:] == '.exe':
-            popen2.popen2( patchee + " /x:" + self._tmpdir + " /quiet" )
-            return True
+        xtracted = []
 
-        return False
+        # TODO handle msu/msi
+        if os.path.basename( patchee ).startswith( 'IE' ):
+            cr, cw, ce = popen2.popen3( patchee + " /x:" + self._tmpdir + " /quiet" )
+            if ce.read() != "":
+                print '[-] failed to extract...(%s)' % patchee
+            else:
+                for root, dirs, fnames in os.walk( self._tmpdir ):
+                    for fname in fnames:
+                        if fname.endswith( ('.dll', '.exe', '.ocx') ): # FIXME more?
+                            xtracted.append( os.path.join( root, fname ) )
+
+            return xtracted
+
+        elif patchee.endswith( '.exe' ) or patchee.endswith( '.msp' ) or '_CAB_' in patchee:
+            cr, cw, ce = popen2.popen3( '7z l ' + patchee )
+            tmp = cr.readlines()
+
+            total = len(tmp)
+            for i in xrange( total-2, -1, -1 ):
+
+                line = tmp[i].strip()
+
+                if 'Date      Time    Attr         Size   Compressed  Name' in line:
+                    break
+
+                pmt = line.split(' ')
+                wnt = pmt[-1]
+                if wnt not in self._whitelist and '---' not in wnt:
+                    if total < 100:
+                        xtracted.append( wnt )
+                    else:       # FIXME msp tends to have lots of file
+                        if '_CAB_' in wnt:
+                            xtracted.append( wnt )
+
+            # extract with 7z.exe
+            if len(xtracted) != 0:
+                popen2.popen3( '7z x -o%s %s %s' % ( self._tmpdir, patchee, ' '.join(xtracted) ) )
+
+            for x in xtracted:
+                ftmp = os.path.join(self._tmpdir, x)
+                if x.endswith('.msp'):
+                    xtracted.remove(x)
+                    xtracted.extend( self._extract( ftmp ) )
+                    os.unlink( ftmp )
+                elif '_CAB_' in x:
+                    xtracted.remove(x)
+                    xtracted.extend( self._extract( ftmp ) )
+                    os.unlink( ftmp )
+
+        else:
+            print '---] not implemented yet...(%s)' % patchee
+
+        return xtracted
+
+    def extract(self, fpatch=None):
+        """
+        """
+        xtracted = self._extract(fpatch)
+        if len(xtracted) != 0:
+            for x in xtracted:
+                # rename with PE version
+                fname = os.path.join( self._tmpdir, x ) if self._tmpdir not in x else x
+                fname = os.path.abspath( fname )
+                ver = self.getver( fname )
+                if ver == '': continue
+                fulln, fext = os.path.splitext(fname)
+                nfname = fulln + ver  + fext
+                try:
+                    shutil.move( fname, nfname )
+                except:
+                    print '[-] failed to rename? (%s)' % fname
+
+        return xtracted
 
 class MsPatchWrapper(msPatchFileInfo):
     """wrapper klass of mspatchfileinfo
@@ -126,7 +213,7 @@ class MsPatchWrapper(msPatchFileInfo):
         for x in tmp:
             yield x
 
-    def get_patch(self, family, direktory, extract_p=False):
+    def get_patch(self, family, direktory, extract_p=False, matcher=''):
         """
         """
         link = 'http://www.microsoft.com/downloads/en/confirmation.aspx?familyid=' + family + '&displayLang=en'
@@ -136,10 +223,11 @@ class MsPatchWrapper(msPatchFileInfo):
 
         self.makeSoup( link )
 
-        downloads = [ x for x in self.BR.links( text_regex='Start download' )]
+        downloads = list( set( [ x.url for x in self.BR.links( text_regex='Click here' )] ) )
 
-        for x in downloads:
-            link = x.url
+        for link in downloads:
+            if matcher != '' and ',' in matcher and matcher.lower().split(',')[1] not in link.lower():
+                continue
             print '---[Downloading %s' % (link)
             try:
                 rc = self.BR.open( link )
@@ -171,8 +259,9 @@ class MsPatchWrapper(msPatchFileInfo):
                 if extract_p:
                     ex = PatchExtracter( tmpdir=os.path.join(direktory, "extracted", tmpname[:-4]) )
                     try:
-                        if ex.extract( fn ):
-                            print '---[Extracted in (%s)' % (ex.tmpdir)
+                        xes = ex.extract( fn )
+                        if len(xes) != 0:
+                            print '---[Extracted in (%s)' % ex.tmpdir
                     except Exception, e:
                         print str(e)
 
@@ -204,11 +293,11 @@ def main():
         prevbulletins = [ x for x in mspatch.prevbulletins ]
 
         for familyid in mspatch.familyids:
-            if ( opts.match and opts.match.lower() not in familyid[0].lower() ):
+            if ( opts.match and opts.match.lower().split(',')[0] not in familyid[0].lower() ):
                 continue
 
             print '---[Target (%s)' % (familyid[0])
-            mspatch.get_patch( familyid[1], opts.output, opts.extract )
+            mspatch.get_patch( familyid[1], opts.output, opts.extract, opts.match )
 
         if opts.follow:
 
@@ -224,11 +313,11 @@ def main():
                 mspatch.query_bulletin( int(m.group('year')), int(m.group('num')) )
 
                 for familyid in mspatch.familyids:
-                    if ( opts.match and opts.match.lower() not in familyid[0].lower() ):
+                    if ( opts.match and opts.match.lower().split(',')[0] not in familyid[0].lower() ):
                         continue
 
                     print '---[Target (%s)' % (familyid[0])
-                    mspatch.get_patch( familyid[1], os.path.join(opts.output, prevbulletin), opts.extract )
+                    mspatch.get_patch( familyid[1], os.path.join(opts.output, prevbulletin), opts.extract, opts.match )
 
     elif opts.list:
 
